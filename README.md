@@ -1,4 +1,4 @@
-# Rust tutorial
+# Rust tutorial <img src="https://github.com/vidyesh95/rust_tutorial/assets/13806493/f3140e94-997a-4df2-af6c-b0f4507975cb" alt="Rust mascot" width="40"/>
 
 ## [Docs](https://doc.rust-lang.org/book/)
 
