@@ -25,9 +25,56 @@
 * have to be the same.
 */
 fn main() {
+    println!("Signed integers!");
+    let signed_integer8: i8 = 127;
+    println!("The value of signed_integer8 is: {signed_integer8}");
+
+    let signed_integer16: i16 = 32_767;
+    println!("The value of signed_integer16 is: {signed_integer16}");
+
+    let signed_integer32: i32 = 2_147_483_647;
+    println!("The value of signed_integer32 is: {signed_integer32}");
+
+    let signed_integer64: i64 = 9_223_372_036_854_775_807;
+    println!("The value of signed_integer64 is: {signed_integer64}");
+
+    let signed_integer128: i128 = 170_141_183_460_469_231_731_687_303_715_884_105_727;
+    println!("The value of signed_integer128 is: {signed_integer128}");
+
+    let signed_integer_size: isize = 9_223_372_036_854_775_807;
+    println!("The value of signed_integer_size is: {signed_integer_size}");
+
+    println!("Unsigned integers!");
+    let unsigned_integer8: u8 = 255;
+    println!("The value of unsigned_integer8 is: {unsigned_integer8}");
+
+    let unsigned_integer16: u16 = 65_535;
+    println!("The value of unsigned_integer16 is: {unsigned_integer16}");
+
+    let unsigned_integer32: u32 = 4_294_967_295;
+    println!("The value of unsigned_integer32 is: {unsigned_integer32}");
+
+    let unsigned_integer64: u64 = 18_446_744_073_709_551_615;
+    println!("The value of unsigned_integer64 is: {unsigned_integer64}");
+
+    let unsigned_integer128: u128 = 340_282_366_920_938_463_463_374_607_431_768_211_455;
+    println!("The value of unsigned_integer128 is: {unsigned_integer128}");
+
+    let unsigned_integer_size: usize = 18_446_744_073_709_551_615;
+    println!("The value of unsigned_integer_size is: {unsigned_integer_size}");
+
+    println!("Floating-point types");
+    let volume32: f32 = 1_000_000.8;
+    println!("The value of volume32 is: {volume32}");
+
+    let volume64: f64 = 1_000_000.3459;
+    println!("The value of volume64 is: {volume64}");
+
+    println!("Boolean type");
     let is_active: bool = false;
     println!("The value of is_active is: {is_active}");
 
+    println!("Character type");
     let character : char= 'z';
     println!("The value of character is: {character}");
 
