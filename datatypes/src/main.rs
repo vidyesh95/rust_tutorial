@@ -25,6 +25,9 @@
 * have to be the same.
 */
 fn main() {
+    let character : char= 'z';
+    println!("The value of character is: {character}");
+
     println!("Tuples!");
     let tup: (i32, f64, u8) = (500, 6.4, 1);
     let (_x, y, _z) = tup; // Destructuring
