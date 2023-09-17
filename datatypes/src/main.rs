@@ -25,6 +25,9 @@
 * have to be the same.
 */
 fn main() {
+    let is_active: bool = false;
+    println!("The value of is_active is: {is_active}");
+
     let character : char= 'z';
     println!("The value of character is: {character}");
 
