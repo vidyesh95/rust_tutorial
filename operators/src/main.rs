@@ -1,14 +1,18 @@
+// Allow comparison and bitwise operation lints because this tutorial file
+// deliberately demonstrates operator behavior using constant literal operands.
+#![allow(clippy::eq_op, clippy::erasing_op, clippy::identity_op)]
+
 /*
-* Rust has a number of built-in operators and they mostly work the same way as in other languages.
-* Rust has four main categories of operators: arithmetic, comparison, logical, and bitwise.
-* Rust also has the following bitwise operators that only work on integers:
-* Bitwise AND: &
-* Bitwise OR: |
-* Bitwise XOR: ^
-* Bitwise NOT: !
-* Bitwise left shift: <<
-* Bitwise right shift: >>
-*/
+ * Rust has a number of built-in operators and they mostly work the same way as in other languages.
+ * Rust has four main categories of operators: arithmetic, comparison, logical, and bitwise.
+ * Rust also has the following bitwise operators that only work on integers:
+ * Bitwise AND: &
+ * Bitwise OR: |
+ * Bitwise XOR: ^
+ * Bitwise NOT: !
+ * Bitwise left shift: <<
+ * Bitwise right shift: >>
+ */
 fn main() {
     println!("Arithmetic operators");
 

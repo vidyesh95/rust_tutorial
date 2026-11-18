@@ -1,12 +1,11 @@
-// Standard input/output library
-use rand::Rng;
 use std::cmp::Ordering;
-use std::io;
+use std::io; // Standard input/output library
 
 fn main() {
     println!("Guess the number");
 
-    let secret_number = rand::thread_rng().gen_range(1..=100);
+    // In rand 0.10+, random_range is the idiomatic function to sample within a range
+    let secret_number = rand::random_range(1..=100);
     println!("The secret number is: {secret_number}");
 
     // loop till the user guesses the correct number

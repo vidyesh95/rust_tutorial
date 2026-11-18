@@ -1,1 +1,16 @@
-/target
+# Cargo build outputs
+**/target
+
+# Compiled binaries and accidental outputs
+*.exe
+*.out
+rustc
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# IDE configuration
+.idea/
+.vscode/
+*.iml

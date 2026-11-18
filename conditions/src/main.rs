@@ -1,7 +1,7 @@
 /**
-* Conditions in Rust:
-* if/else expression allows us to branch our code depending on conditions.
-*/
+ * Conditions in Rust:
+ * if/else expression allows us to branch our code depending on conditions.
+ */
 fn main() {
     println!("Conditions in rust");
 

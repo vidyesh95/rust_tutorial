@@ -1,7 +1,7 @@
 /*
-* Rust code uses snake case as the conventional style for function and variable names.
-* In snake case, all letters are lowercase and underscores separate words.
-*/
+ * Rust code uses snake case as the conventional style for function and variable names.
+ * In snake case, all letters are lowercase and underscores separate words.
+ */
 
 fn main() {
     println!("Hello, world!");
@@ -12,8 +12,8 @@ fn main() {
     let y = {
         let x = 3;
         x + 1 // Expressions do not include ending semicolons.
-              // If you add a semicolon to the end of an expression,
-              // you turn it into a statement, which will then not return a value.
+        // If you add a semicolon to the end of an expression,
+        // you turn it into a statement, which will then not return a value.
     };
     println!("The value of y is: {y}");
 
