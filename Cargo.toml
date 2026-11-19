@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
     ".",
+    "async_tokio",
+    "backend_api_service",
     "collections",
     "concurrency_threads",
     "conditions",
@@ -12,7 +14,10 @@ members = [
     "guessing_game",
     "hello_cargo",
     "iterators_closures",
+    "lifetimes",
     "loops",
+    "modules",
+    "multithreaded_webserver",
     "operators",
     "ownership",
     "ownership_borrowing",

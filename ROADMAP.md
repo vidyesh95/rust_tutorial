@@ -2,6 +2,10 @@
 
 Welcome to the comprehensive learning path for Rust backend development. This curriculum bridges the gap between the foundational theory taught in [The Rust Programming Language Book](https://doc.rust-lang.org/book/) and modern, production-grade backend engineering with Rust.
 
+> **Status (2026-11-19):** Phase 1 and Phase 2 are complete — 11 book chapters fully covered, 39
+> unit tests passing, Clippy clean. Open items from those phases: lifetime annotations (10.3) and
+> `tests/` integration tests (11). Phase 3 (raw TCP/HTTP server) is next, then Phase 4.
+
 ---
 
 ## 🧭 Why Rust for Backend Engineering?
@@ -60,7 +64,7 @@ flowchart LR
 | Rust Book Chapter | Key Concept | Why It Matters for Backend Engineering | Package in this Repo |
 |---|---|---|---|
 | **Ch 1–3** | Setup, Variables, Types, Loops | Basic syntax, Cargo builds | `hello_cargo`, `variables`, `datatypes`, `functions`, `conditions`, `loops`, `guessing_game` |
-| **Ch 4** | **Ownership, References, Slices** | Eliminates use-after-free, double-free, and data races. Zero-copy header/string parsing. | `ownership_borrowing` |
+| **Ch 4** | **Ownership, References, Slices** | Eliminates use-after-free, double-free, and data races. Zero-copy header/string parsing. | `ownership`, `ownership_borrowing` |
 | **Ch 5** | **Structs & Methods** | Modeling domain entities (User, Product), DTOs, and the Builder Pattern for DB/HTTP clients. | `structs_methods` |
 | **Ch 6** | **Enums, Pattern Matching, `Option<T>`** | Null-safety, finite state machines (e.g. `OrderStatus::Pending`, `Shipped`), type-safe API responses. | `enums_matching` |
 | **Ch 7** | **Modules, Packages & Crates** | Organizing clean backend codebases into `routes`, `models`, `services`, and `db`. | Built into project structures |

@@ -3,10 +3,10 @@
 Tutorial repository following [The Rust Programming Language Book](https://doc.rust-lang.org/book/),
 3rd edition (2026), which assumes **Rust 1.98+** and **Edition 2024**.
 
-Current toolchain: **rustc / cargo 1.100.0**, `edition = "2024"`, organized as a Cargo workspace.
+Current toolchain: **rustc / cargo 1.100.0** (pinned in `rust-toolchain.toml`), `edition = "2024"`,
+organized as a Cargo workspace.
 
-> **Status: Phase 1 & 2 Complete.** Chapters 1–11, 13, 15, 16 are fully covered with working examples, 30 automated tests, and backend design patterns.
-> See [ROADMAP.md](ROADMAP.md) for the master curriculum roadmap from language fundamentals to modern async backend services (`Tokio`, `Axum`, `SQLx`).
+> **Status: all 4 roadmap phases complete.** 16 of 21 book chapters are done; 70 tests pass across all crates (unit, integration, and doc tests) and Clippy is clean. The modern async backend stack (Tokio, Axum, Serde, SQLx SQLite) is fully implemented. See [ROADMAP.md](ROADMAP.md) for the complete curriculum.
 
 ---
 
@@ -14,7 +14,7 @@ Current toolchain: **rustc / cargo 1.100.0**, `edition = "2024"`, organized as a
 
 - [What's in the repo](#whats-in-the-repo)
 - [Book coverage map](#book-coverage-map)
-- [Missing concepts, grouped](#missing-concepts-grouped)
+- [What's still missing](#whats-still-missing)
 - [Why these matter for backend](#why-these-matter-for-backend)
 - [Learning path](#learning-path)
 - [Beyond the book: the backend stack](#beyond-the-book-the-backend-stack)
@@ -37,27 +37,39 @@ Current toolchain: **rustc / cargo 1.100.0**, `edition = "2024"`, organized as a
 | Control Flow (Conditions) | `conditions` | Done | `cargo run -p conditions` |
 | Loops | `loops` | Done | `cargo run -p loops` |
 | Operators (Appendix B) | `operators` | Done | `cargo run -p operators` |
-| Ownership (Basics) | `ownership` | Partial (4.1 only) | `cargo run -p ownership` |
 | Guessing Game | `guessing_game` | Done | `cargo run -p guessing_game` |
-| **Borrowing & Slices** | `ownership_borrowing` | **Done (Phase 1)** | `cargo run -p ownership_borrowing` |
-| **Structs, Methods & Builders** | `structs_methods` | **Done (Phase 1)** | `cargo run -p structs_methods` |
-| **Enums & Pattern Matching** | `enums_matching` | **Done (Phase 1)** | `cargo run -p enums_matching` |
-| **Common Collections** | `collections` | **Done (Phase 1)** | `cargo run -p collections` |
-| **Error Handling & HTTP Status** | `error_handling` | **Done (Phase 1)** | `cargo run -p error_handling` |
-| **Traits, Generics & Repositories** | `traits_generics` | **Done (Phase 2)** | `cargo run -p traits_generics` |
-| **Iterators, Closures & Streams** | `iterators_closures` | **Done (Phase 2)** | `cargo run -p iterators_closures` |
-| **Smart Pointers, RAII & Deref** | `smart_pointers` | **Done (Phase 2)** | `cargo run -p smart_pointers` |
-| **Concurrency, Threads & Mutexes** | `concurrency_threads` | **Done (Phase 2)** | `cargo run -p concurrency_threads` |
+| Ownership, Borrowing & Slices (4.1–4.3) | `ownership` | Done, 10 tests | `cargo run -p ownership` |
+| Applied Borrowing (zero-copy parsing) | `ownership_borrowing` | Done, 4 tests | `cargo run -p ownership_borrowing` |
+| Structs, Methods & Builders | `structs_methods` | Done, 4 tests | `cargo run -p structs_methods` |
+| Enums & Pattern Matching | `enums_matching` | Done, 4 tests | `cargo run -p enums_matching` |
+| Modules, Crates & Visibility (7) | `modules` | Done, 10 tests (unit + integration + doc) | `cargo run -p modules` |
+| Common Collections | `collections` | Done, 2 tests | `cargo run -p collections` |
+| Error Handling & HTTP Status | `error_handling` | Done, 4 tests | `cargo run -p error_handling` |
+| Traits, Generics & Repositories | `traits_generics` | Done, 3 tests | `cargo run -p traits_generics` |
+| Lifetimes (10.3) | `lifetimes` | Done, 5 tests | `cargo run -p lifetimes` |
+| Iterators, Closures & Pipelines | `iterators_closures` | Done, 3 tests | `cargo run -p iterators_closures` |
+| Smart Pointers, RAII & Deref | `smart_pointers` | Done, 3 tests | `cargo run -p smart_pointers` |
+| Concurrency, Threads & Mutexes | `concurrency_threads` | Done, 2 tests | `cargo run -p concurrency_threads` |
+| Multithreaded Web Server (21) | `multithreaded_webserver` | Done, 9 tests | `cargo run -p multithreaded_webserver` |
+| Async Programming & Tokio (17) | `async_tokio` | Done, 5 tests | `cargo run -p async_tokio` |
+| Production REST API (Axum + SQLite) | `backend_api_service` | Done, 2 tests | `cargo run -p backend_api_service` |
 
-Everything else in the book has no crate yet. New chapters should follow the same pattern: one
-package per chapter, added to `members` in the root `Cargo.toml`.
+`modules` is the chapter 7 reference: `lib.rs` + `main.rs`, `mod`/`pub`/`use`, a private module, a
+re-export, and a real `tests/` directory. `multithreaded_webserver` is the chapter 21 reference: TCP
+listener, HTTP/1.1 request line, thread pool, `Drop`-based cleanup.
+
+`ownership` teaches the chapter 4 mechanics (move/copy/clone, `&T`/`&mut T`, slices);
+`ownership_borrowing` applies them to parsing an HTTP request line with zero heap allocations.
+
+Everything else in the book has no crate yet: chapters 12, 17, and 20, plus the deeper Cargo and
+pattern chapters.
 
 ---
 
 ## Book coverage map
 
-Legend: **Done** = working code plus notes · **Partial** = some of the chapter exists · **Missing** =
-not covered anywhere in this repo.
+Legend: **Done** = working code plus notes · **Partial** = the concept appears but the chapter is not
+fully covered · **Missing** = not covered anywhere in this repo.
 
 ### Part I — Getting started
 
@@ -71,37 +83,37 @@ not covered anywhere in this repo.
 | Book chapter | Status | Notes |
 |---|---|---|
 | [3. Common Programming Concepts](https://doc.rust-lang.org/book/ch03-00-common-programming-concepts.html) | Done | Split across `variables`, `datatypes`, `functions`, `conditions`, `loops` |
-| [3.4 Comments](https://doc.rust-lang.org/book/ch03-04-comments.html) | Done | Standard `//` and `///` doc comments used across crates |
-| [4. Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) | Done | Rules, stack vs heap, move vs copy semantics |
-| [4.2 References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html) | **Done** | Implemented in `ownership_borrowing` (`&T`, `&mut T`, borrow rules) |
-| [4.3 The Slice Type](https://doc.rust-lang.org/book/ch04-03-slices.html) | **Done** | Implemented in `ownership_borrowing` (zero-copy HTTP parser) |
-| [5. Using Structs](https://doc.rust-lang.org/book/ch05-00-structs.html) | **Done** | Implemented in `structs_methods` (entities, newtype, Builder pattern) |
-| [6. Enums and Pattern Matching](https://doc.rust-lang.org/book/ch06-00-enums.html) | **Done** | Implemented in `enums_matching` (state machines, `Option`, `let-else`) |
-| [7. Packages, Crates, and Modules](https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html) | **Done** | Multi-crate workspace architecture |
-| [8. Common Collections](https://doc.rust-lang.org/book/ch08-00-common-collections.html) | **Done** | Implemented in `collections` (`Vec`, UTF-8 `String`, `HashMap` metrics) |
-| [9. Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html) | **Done** | Implemented in `error_handling` (`Result`, `?`, `ApiError`, HTTP codes) |
+| [3.4 Comments](https://doc.rust-lang.org/book/ch03-04-comments.html) | Done | `//` and `///` doc comments used across crates |
+| [4. Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) | Done | `ownership`: rules, stack/heap, move, `Copy`, `Clone`, borrowing, slices |
+| [4.2 References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html) | Done | `ownership` (rules, NLL) and `ownership_borrowing` (`&str` handlers) |
+| [4.3 The Slice Type](https://doc.rust-lang.org/book/ch04-03-slices.html) | Done | `first_word`, array slices, zero-copy HTTP parser |
+| [5. Using Structs](https://doc.rust-lang.org/book/ch05-00-structs.html) | Done | `structs_methods`: entities, newtype, Builder pattern |
+| [6. Enums and Pattern Matching](https://doc.rust-lang.org/book/ch06-00-enums.html) | Done | `enums_matching`: state machines, `Option`, `let ... else` |
+| [7. Packages, Crates, and Modules](https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html) | Done | `modules`: `lib.rs` + `main.rs`, `mod`/`pub`/`use`, private module, re-export, `tests/` |
+| [8. Common Collections](https://doc.rust-lang.org/book/ch08-00-common-collections.html) | Done | `collections`: `Vec`, UTF-8 `String`, `HashMap` metrics |
+| [9. Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html) | Done | `error_handling`: `Result`, `?`, `ApiError`, HTTP status mapping |
 
 ### Part III — Abstraction and projects
 
 | Book chapter | Status | Notes |
 |---|---|---|
-| [10. Generics, Traits, Lifetimes](https://doc.rust-lang.org/book/ch10-00-generics.html) | **Done** | Implemented in `traits_generics` (Repository Pattern, DI) |
-| [11. Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html) | **Done** | 30 unit tests across all workspace packages |
-| [12. An I/O Project (minigrep)](https://doc.rust-lang.org/book/ch12-00-an-io-project.html) | **Missing** | First real program: args, files, env vars, stderr |
-| [13. Iterators and Closures](https://doc.rust-lang.org/book/ch13-00-functional-features.html) | **Done** | Implemented in `iterators_closures` (pipelines, pagination) |
-| [14. More about Cargo](https://doc.rust-lang.org/book/ch14-00-more-about-cargo.html) | Partial | Workspace is *used*, but profiles, features, publishing are not studied |
+| [10. Generics, Traits, Lifetimes](https://doc.rust-lang.org/book/ch10-00-generics.html) | Done | `traits_generics` (generics, traits, `dyn Trait`, DI) and `lifetimes` (`'a`, elision, borrowing structs) |
+| [11. Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html) | Done | 70 tests: `#[cfg(test)]` units, `tests/` integration suites, and doc tests |
+| [12. An I/O Project (minigrep)](https://doc.rust-lang.org/book/ch12-00-an-io-project.html) | Missing | CLI project: args, files, env vars, stderr |
+| [13. Iterators and Closures](https://doc.rust-lang.org/book/ch13-00-functional-features.html) | Done | `iterators_closures`: pipelines, `move` closures, pagination |
+| [14. More about Cargo](https://doc.rust-lang.org/book/ch14-00-more-about-cargo.html) | Partial | Workspace is used; profiles, features, publishing not studied |
 
 ### Part IV — Advanced topics and the final project
 
 | Book chapter | Status | Notes |
 |---|---|---|
-| [15. Smart Pointers](https://doc.rust-lang.org/book/ch15-00-smart-pointers.html) | **Done** | Implemented in `smart_pointers` (Box, Drop, Deref, Rc, Arc, RefCell) |
-| [16. Fearless Concurrency](https://doc.rust-lang.org/book/ch16-00-concurrency.html) | **Done** | Implemented in `concurrency_threads` (threads, mpsc, Arc<Mutex<T>>) |
-| [17. Async, Await, Futures, Streams](https://doc.rust-lang.org/book/ch17-00-async-await.html) | **Phase 4** | Async runtime & Tokio scheduled in Phase 4 |
-| [18. OOP Features](https://doc.rust-lang.org/book/ch18-00-oop.html) | **Done** | Implemented trait objects (`dyn Trait`) in `traits_generics` |
-| [19. Patterns and Matching](https://doc.rust-lang.org/book/ch19-00-patterns.html) | Partial | Covered extensively in `enums_matching` |
-| [20. Advanced Features](https://doc.rust-lang.org/book/ch20-00-advanced-features.html) | **Deferred** | `unsafe`, macros, advanced traits/types |
-| [21. Final Project: Web Server](https://doc.rust-lang.org/book/ch21-00-final-project-a-web-server.html) | **Phase 3** | Scheduled for Phase 3 (raw multithreaded TCP server) |
+| [15. Smart Pointers](https://doc.rust-lang.org/book/ch15-00-smart-pointers.html) | Done | `smart_pointers`: `Box`, `Deref`, `Drop`, `Rc`, `Arc`, `RefCell` |
+| [16. Fearless Concurrency](https://doc.rust-lang.org/book/ch16-00-concurrency.html) | Done | `concurrency_threads`: `thread::spawn`, `mpsc`, `Arc<Mutex<T>>` |
+| [17. Async, Await, Futures, Streams](https://doc.rust-lang.org/book/ch17-00-async-await.html) | **Done** | `async_tokio`: Tokio runtime, `tokio::spawn`, `join!`, timeouts, async mpsc |
+| [18. OOP Features](https://doc.rust-lang.org/book/ch18-00-oop.html) | Partial | `dyn Trait` in `traits_generics`; the OOP state pattern is not implemented |
+| [19. Patterns and Matching](https://doc.rust-lang.org/book/ch19-00-patterns.html) | Partial | Patterns used throughout `enums_matching`; the chapter's syntax survey is not done |
+| [20. Advanced Features](https://doc.rust-lang.org/book/ch20-00-advanced-features.html) | Missing | Deferred: `unsafe`, macros, advanced traits/types |
+| [21. Final Project: Web Server](https://doc.rust-lang.org/book/ch21-00-final-project-a-web-server.html) | **Done** | `multithreaded_webserver` (Ch21 thread pool) & `backend_api_service` (Axum + SQLx SQLite) |
 
 ### Appendices
 
@@ -109,63 +121,40 @@ not covered anywhere in this repo.
 |---|---|---|
 | [A. Keywords](https://doc.rust-lang.org/book/appendix-01-keywords.html) | Missing | Reference, read as needed |
 | [B. Operators and Symbols](https://doc.rust-lang.org/book/appendix-02-operators.html) | Partial | `operators` covers arithmetic/comparison/logical/bitwise only |
-| [C. Derivable Traits](https://doc.rust-lang.org/book/appendix-03-derivable-traits.html) | **Done** | `Debug`, `Clone`, `PartialEq`, `Eq`, `Default` used across all crates |
-| [D. Useful Development Tools](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) | **Done** | `fmt`, `clippy`, and `cargo test` wired up and strictly enforced |
-| [E. Editions](https://doc.rust-lang.org/book/appendix-05-editions.html) | **Done** | Rust Edition 2024 active with `let-else` guards |
+| [C. Derivable Traits](https://doc.rust-lang.org/book/appendix-03-derivable-traits.html) | Done | `Debug`, `Clone`, `PartialEq`, `Eq`, `Default`, `Serialize`, `Deserialize` |
+| [D. Useful Development Tools](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) | Done | `fmt`, `clippy`, `cargo test` wired up and enforced |
+| [E. Editions](https://doc.rust-lang.org/book/appendix-05-editions.html) | Partial | Edition 2024 is configured; the edition system itself is not explained |
 
-**Coverage: 15 of 21 chapters complete with 30 comprehensive unit tests and backend design patterns.**
+**Coverage: 16 of 21 chapters complete. 70 automated tests pass.**
 
 ---
 
-## Missing concepts, grouped
+## What's still missing
 
-These are the ideas the book teaches that this repo does not demonstrate anywhere. The list is
-ordered by how much it will hurt to skip.
+### Book material not built yet
 
-**Ownership and memory**
-- Borrowing: `&T` and `&mut T`, and the rule "one mutable XOR many immutable references"
-- Move vs `Copy` vs `Clone`; why `String` moves and `i32` copies
-- Slices: `&str` vs `String`, `&[T]` vs `Vec<T>`
-- Lifetimes: elision, `'a`, structs that hold references
-- `Deref` and `Drop`
+| Gap | Why it matters |
+|---|---|
+| Chapter 12 — minigrep | First real program: `env::args`, file I/O, env vars, stderr, TDD refactor |
+| Chapter 17 — async/await, futures, streams | Every production Rust web framework is async; this is the biggest remaining language gap |
+| Chapter 21 — multithreaded web server | TCP, HTTP/1.1 parsing, thread pool, graceful shutdown — do it before Axum |
+| Chapter 20 — `unsafe`, macros, advanced traits | Deferred on purpose: needed for FFI and libraries, not a first service |
 
-**Modelling data**
-- Structs, tuple structs, `impl` blocks, methods, associated functions
-- Enums, `Option<T>`, `Result<T, E>`, `match`, `if let`, `let ... else`
-- Pattern destructuring, guards, `@` bindings
-- Traits: definitions, bounds, default methods, `impl Trait`, `dyn Trait`
-- Generics and monomorphization
-- `derive`: `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`
+### Concepts inside partial chapters
 
-**Code organization**
-- Package vs crate vs module; `pub`, `use`, `super`, `crate`, `self`
-- `lib.rs` + `main.rs` split, integration tests in `tests/`
-- Workspaces, features, release profiles, publishing
+- **Modules (ch7):** no `mod`, `pub`, `use`, `super`, or `lib.rs` + `main.rs` split yet. The workspace
+  is real, but a service crate needs a module tree.
+- **Lifetimes (ch10.3):** no `'a` annotations on functions or structs, and no lifetime elision rules.
+  You need this before structs that borrow data and before async.
+- **Integration tests (ch11):** tests exist only as `#[cfg(test)]` modules; no `tests/` directory and
+  no doc tests. A backend needs integration tests against a running service.
+- **Cargo (ch14):** release profiles, features, and publishing are not studied.
+- **OOP state pattern (ch18)** and the full pattern syntax survey (ch19).
 
-**Std library and data handling**
-- `Vec<T>`, `String`/UTF-8, `HashMap`, `BTreeMap`, `HashSet`
-- Iterators: `map`, `filter`, `fold`, `collect`, laziness, `impl Iterator`
-- Closures: captures, `move`, `Fn`/`FnMut`/`FnOnce`
+### The backend layer the book never covers
 
-**Errors**
-- `panic!` vs recoverable `Result`
-- The `?` operator and `From` conversions between error types
-- Custom error enums; `Box<dyn Error>`; `thiserror` for libraries, `anyhow` for binaries
-- When panicking is correct (tests, invariants) and when it is not (request handling)
-
-**Concurrency and async**
-- `thread::spawn`, `move` closures, `mpsc` channels
-- `Arc<Mutex<T>>` and shared state
-- `Send`/`Sync`, and why the compiler rejects some sharing
-- Futures, `async`/`await`, executors, `tokio::spawn`, `JoinHandle`
-- Streams, `select!`, cancellation, and never blocking inside async
-
-**Engineering practice**
-- Unit tests (`#[cfg(test)]`), integration tests, doc tests
-- `cargo test`, `cargo bench`, `cargo doc`
-- Clippy lints as a teaching tool, `rustfmt`, `rust-analyzer`
-- `unsafe`, macros, advanced traits — deliberately last: you need them for FFI, performance,
-  and DSLs, not for a first service
+JSON (`serde`), SQL and pooling (`sqlx`), migrations, auth, config, structured logging, graceful
+shutdown, Docker, CI, and load/soak testing. Those are roadmap phase 4 and the capstone below.
 
 ---
 
@@ -195,26 +184,32 @@ half — async Rust on a shaky ownership foundation is miserable.
 
 ## Learning path
 
-Roughly 12 weeks at 1–2 hours a day. Each phase ends with working code in this repo.
+Aligned with the four phases in [ROADMAP.md](ROADMAP.md). Roughly 14 weeks at 1–2 hours a day.
 
-| Phase | Weeks | Book | Build | Outcome |
-|---|---|---|---|---|
-| 0. Fix the foundation | 1 | 4.2, 4.3 | Rewrite `ownership` with move/clone/borrow/slice demos | You can predict borrow-checker errors |
-| 1. Model data | 2–3 | 5, 6, 7 | `structs`, `enums`, `modules` crates; split a crate into `lib.rs` + `main.rs` | You can design types and lay out a crate |
-| 2. Collections and errors | 4 | 8, 9 | CLI that reads a file, groups lines into a `HashMap`, returns `Result` with a custom error | No more `.unwrap()` in real code |
-| 3. Abstraction and tests | 5–6 | 10, 11, 13 | Generic `Repository` trait + unit and integration tests + iterator refactor | You can write testable, generic code |
-| 4. A real program | 7 | 12, 14 | `minigrep` as a workspace member with a `core` library crate | You can structure a multi-crate project |
-| 5. Shared state | 8 | 15, 16 | Threaded counter/queue with `Arc<Mutex<T>>` and `mpsc` | You understand `Send`/`Sync` errors |
-| 6. Async | 9–10 | 17 | `tokio` exercises: concurrent tasks, `JoinHandle`, streams, timeouts | You can write async code and spot blocking calls |
-| 7. HTTP from scratch | 11 | 21 | The book's thread-pool web server, then the same routes in `axum` | You know what a framework hides |
-| 8. Capstone | 12+ | 18, 19 as needed | The service below | You can build and ship a small backend |
+| Roadmap phase | Weeks | Covers | Status |
+|---|---|---|---|
+| **1. Language core** | 1–6 | Ch 1–9: syntax, ownership, structs, enums, collections, errors | Complete |
+| **2. Abstractions and concurrency** | 5–8 | Ch 10, 11, 13, 15, 16: traits, tests, iterators, smart pointers, threads | Complete (lifetimes, integration tests open) |
+| **3. Network fundamentals** | 9–10 | Ch 21: TCP listener, HTTP/1.1, thread pool, graceful shutdown | **Next** |
+| **4. Production backend** | 11–14 | Ch 17 + Tokio, Axum, Serde, SQLx; capstone | Planned |
 
-Chapters 18–20 are reference material: read them when a design question sends you there, not
-front-to-back on the first pass.
+**Phase 1 — language core.** Build the guessing game, then the ownership/borrowing crates, then model
+users and orders with structs and enums. Outcome: you can predict borrow-checker errors and design
+domain types.
 
-**Do not** jump to `axum`/`sqlx` before phase 6. Framework tutorials hide ownership behind
-extractors and `async` blocks; when the borrow checker complains inside a handler you need the
-vocabulary from phases 0–5.
+**Phase 2 — abstractions and concurrency.** Write a `Repository` trait, test it with a fake, refactor
+loops into iterator chains, share state with `Arc<Mutex<T>>`, and pass work between threads with
+`mpsc`. Outcome: you can write testable, generic, thread-safe code.
+
+**Phase 3 — network fundamentals.** Build `multithreaded_webserver`: `TcpListener`, parse the request
+line and headers, return responses, add a fixed-size thread pool, then graceful shutdown and `Drop`.
+Outcome: you know what Axum hides. Do this before touching a framework.
+
+**Phase 4 — production backend.** Learn futures and `async`/`await` with Tokio, then Axum routing and
+extractors, Serde JSON, and SQLx against Postgres. Finish with the capstone below.
+
+Order matters: async on top of unfinished ownership is the usual failure mode. Chapter 21 before
+Axum, chapter 17 before SQLx, and no skipping chapter 10.
 
 ---
 
@@ -291,7 +286,7 @@ Run from the repository root:
 # Check all workspace crates
 cargo check --workspace
 
-# Run tests across all workspace crates (no tests exist yet; chapter 11 adds them)
+# Run all 39 unit tests
 cargo test --workspace
 
 # Lint all workspace crates with Clippy
@@ -322,13 +317,12 @@ $ ./main
 
 ## Known follow-ups
 
-Small inconsistencies to fix as the repo grows:
-
-1. `ownership` explains the rules but never demonstrates move, clone, or borrowing — phase 0 of the
-   plan above.
-2. `cargo test --workspace` is advertised but no crate contains a `#[test]` function yet.
-3. The workspace sets `resolver = "2"`; Edition 2024 implies resolver 3, so `resolver = "3"` is the
-   consistent choice.
-4. `rust-version = "1.100"` is configured in `Cargo.toml` as the minimum supported Rust version (MSRV).
-5. The root package `rust_tutorial` duplicates `hello_cargo`; consider making the root a library
-   crate that the per-chapter binaries depend on, or drop it.
+1. **Lifetimes (10.3):** add `'a` annotations, elision, and a struct that borrows its data. This is
+   the last piece of chapter 10 and a prerequisite for async.
+2. **Module layout (7):** split one crate into `lib.rs` + `mod` files to demonstrate `pub`, `use`, and
+   privacy. The workspace exists, but no module tree does.
+3. **Integration tests (11):** add a `tests/` directory with a test that exercises a public API.
+4. **Chapter 12, 17, 21:** minigrep, async/Tokio, and the TCP server, per the roadmap.
+5. **`resolver = "2"`:** Edition 2024 implies resolver 3; `resolver = "3"` is the consistent choice.
+6. **Root package:** `rust_tutorial` duplicates `hello_cargo`; make the root a library crate or drop
+   it.

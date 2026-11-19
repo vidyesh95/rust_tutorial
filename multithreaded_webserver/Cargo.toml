@@ -1,0 +1,7 @@
+[package]
+name = "multithreaded_webserver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
