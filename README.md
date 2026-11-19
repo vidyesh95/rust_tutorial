@@ -13,6 +13,7 @@ organized as a Cargo workspace.
 ## Contents
 
 - [Interview & Backend Masterclass (INTERVIEW_PREP.md)](INTERVIEW_PREP.md)
+- [Relational Database & SQL Handbook (SQL_RELATIONAL_DATABASE_GUIDE.md)](SQL_RELATIONAL_DATABASE_GUIDE.md)
 - [What's in the repo](#whats-in-the-repo)
 - [Book coverage map](#book-coverage-map)
 - [What's still missing](#whats-still-missing)
