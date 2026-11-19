@@ -102,8 +102,11 @@ name = "backend_api_service"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hex",
+ "rand 0.10.4",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
  "tower",

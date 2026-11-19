@@ -1,9 +1,12 @@
-//! # Phase 4: Production-Grade REST API with Axum, Serde, SQLx & OpenAPI / Swagger
+//! # Phase 4: Production-Grade REST API with Axum, Serde, SQLx & BetterAuth Compatibility
 //!
 //! ## Key Backend Architecture:
-//! - **Axum Web Framework**: Type-safe routing, extractors (`Path`, `Query`, `Json`, `State`),
-//!   custom auth extractors (`AuthUser`), and composable Tower middleware.
-//! - **Serde Serialization**: Compile-time derived `Serialize` and `Deserialize` for JSON bodies.
+//! - **BetterAuth Structure**: Standard `/api/auth/*` endpoints (`sign-up/email`, `sign-in/email`,
+//!   `sign-out`, `get-session`, `me`) with HTTP-only session cookies (`better-auth.session_token`)
+//!   and Bearer token fallback.
+//! - **Password Security**: Salted SHA-256 cryptographic hashing (`salt$hash`) and verification.
+//! - **Axum Extractors**: `BetterAuthUser` and `AuthUser` implementing `FromRequestParts` to inject
+//!   authenticated users into route handlers cleanly.
 //! - **SQLx SQLite**: Non-blocking asynchronous SQL execution, connection pooling (`SqlitePool`),
 //!   foreign key enforcement, and atomic multi-table transactions (`pool.begin()`).
 //! - **OpenAPI & Swagger UI (utoipa)**: Interactive documentation served directly at `/swagger-ui`
@@ -14,17 +17,23 @@
 use axum::{
     Json, Router,
     extract::{FromRequestParts, Path, Query, State},
-    http::{StatusCode, request::Parts},
+    http::{
+        HeaderMap, HeaderValue, StatusCode,
+        header::{COOKIE, SET_COOKIE},
+        request::Parts,
+    },
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{
     FromRow, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tower_http::trace::TraceLayer;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
@@ -36,29 +45,86 @@ pub struct AppState {
     pub pool: SqlitePool,
 }
 
-// --- 2. Domain Models & DTOs ---
+// --- 2. Cryptographic Helpers (Password Hashing & Session Tokens) ---
+
+/// Hashes a plaintext password with a random 16-hex-digit salt using SHA-256.
+/// Output format matches standard crypto formats: `<salt>$<sha256_hex>`
+pub fn hash_password(password: &str) -> String {
+    let salt: String = (0..16)
+        .map(|_| format!("{:x}", rand::random::<u8>() % 16))
+        .collect();
+    let mut hasher = Sha256::new();
+    hasher.update(salt.as_bytes());
+    hasher.update(password.as_bytes());
+    let hash = hex::encode(hasher.finalize());
+    format!("{salt}${hash}")
+}
+
+/// Verifies whether a plaintext password matches a stored `<salt>$<hash>` string.
+pub fn verify_password(password: &str, stored_hash: &str) -> bool {
+    let parts: Vec<&str> = stored_hash.split('$').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+    let salt = parts[0];
+    let expected_hash = parts[1];
+
+    let mut hasher = Sha256::new();
+    hasher.update(salt.as_bytes());
+    hasher.update(password.as_bytes());
+    let computed_hash = hex::encode(hasher.finalize());
+    computed_hash == expected_hash
+}
+
+/// Generates a cryptographically random 48-character hex session token.
+pub fn generate_session_token() -> String {
+    let bytes: [u8; 24] = rand::random();
+    hex::encode(bytes)
+}
+
+/// Returns current UNIX timestamp in seconds.
+pub fn current_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+// --- 3. Domain Models & DTOs ---
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone, PartialEq, Eq, ToSchema)]
 pub struct User {
     /// Unique database identifier
     #[schema(example = 1)]
     pub id: i64,
-    /// Unique username of the user
-    #[schema(example = "alice")]
-    pub username: String,
+    /// User's display name
+    #[schema(example = "Alice Doe")]
+    pub name: String,
     /// Primary email address
     #[schema(example = "alice@example.com")]
     pub email: String,
+    /// Unix timestamp of account creation
+    #[schema(example = 1716000000)]
+    pub created_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct CreateUserPayload {
-    /// Desired username (must be unique)
-    #[schema(example = "bob")]
-    pub username: String,
-    /// User's contact email
-    #[schema(example = "bob@example.com")]
-    pub email: String,
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone, PartialEq, Eq, ToSchema)]
+pub struct Session {
+    /// Unique session identifier
+    #[schema(example = 1)]
+    pub id: i64,
+    /// Foreign key referencing users(id)
+    #[schema(example = 1)]
+    pub user_id: i64,
+    /// Random opaque session token
+    #[schema(example = "4f8a3c9b7e1d2f0a5b6c8d7e9f0a1b2c3d4e5f6a")]
+    pub token: String,
+    /// Unix timestamp when this session expires
+    #[schema(example = 1716604800)]
+    pub expires_at: i64,
+    /// Unix timestamp when this session was created
+    #[schema(example = 1716000000)]
+    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone, PartialEq, Eq, ToSchema)]
@@ -78,6 +144,56 @@ pub struct Task {
     /// Completion status flag
     #[schema(example = false)]
     pub completed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SignUpPayload {
+    /// User's full name
+    #[schema(example = "Alex Doe")]
+    pub name: String,
+    /// Valid email address
+    #[schema(example = "alex@example.com")]
+    pub email: String,
+    /// Secret password (minimum 6 characters)
+    #[schema(example = "supersecret123")]
+    pub password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SignInPayload {
+    /// User's email address
+    #[schema(example = "alex@example.com")]
+    pub email: String,
+    /// User's password
+    #[schema(example = "supersecret123")]
+    pub password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AuthResponse {
+    /// The generated session token
+    #[schema(example = "4f8a3c9b7e1d2f0a5b6c8d7e9f0a1b2c3d4e5f6a")]
+    pub token: String,
+    /// The authenticated user record
+    pub user: User,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SessionResponse {
+    /// Session metadata
+    pub session: Session,
+    /// Associated user profile
+    pub user: User,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreateUserPayload {
+    /// Desired name
+    #[schema(example = "bob")]
+    pub username: String,
+    /// User's contact email
+    #[schema(example = "bob@example.com")]
+    pub email: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -135,7 +251,7 @@ pub struct HealthResponse {
     pub status: String,
     #[schema(example = "Axum 0.8")]
     pub framework: String,
-    #[schema(example = "SQLite / SQLx")]
+    #[schema(example = "SQLite / SQLx (Foreign Keys Enabled)")]
     pub database: String,
 }
 
@@ -149,11 +265,126 @@ pub struct AdminStatsResponse {
     pub message: String,
 }
 
-// --- 3. Authentication Extractor (Backend Auth Pattern) ---
+// --- 4. Structured Application Errors (HTTP Mapping) ---
 
-/// Extractor that verifies the HTTP `Authorization: Bearer <token>` header.
-/// In production, this would decode and verify a signed JWT (e.g. using `jsonwebtoken`).
-/// For this educational backend, `secret-token-123` represents valid admin credentials.
+#[derive(Debug)]
+pub enum AppError {
+    BadRequest(String),
+    NotFound(String),
+    Conflict(String),
+    Unauthorized(String),
+    DatabaseError(sqlx::Error),
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db_err) = err
+            && db_err.message().contains("UNIQUE")
+        {
+            return AppError::Conflict("A user with this email already exists".to_string());
+        }
+        AppError::DatabaseError(err)
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            AppError::DatabaseError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database failure: {e}"),
+            ),
+        };
+
+        let body = Json(ErrorResponse {
+            status: status.as_u16(),
+            error: error_message,
+        });
+
+        (status, body).into_response()
+    }
+}
+
+// --- 5. Authentication Extractors (BetterAuth & Bearer Token Patterns) ---
+
+/// Helper function to extract a session token from either:
+/// 1. Cookie: `better-auth.session_token=<token>`
+/// 2. Header: `Authorization: Bearer <token>`
+pub fn extract_token_from_parts(parts: &Parts) -> Option<String> {
+    // 1. Try Cookie header first
+    if let Some(cookie_header) = parts.headers.get(COOKIE).and_then(|v| v.to_str().ok()) {
+        for item in cookie_header.split(';') {
+            let item = item.trim();
+            if let Some((name, val)) = item.split_once('=')
+                && name == "better-auth.session_token"
+            {
+                return Some(val.to_string());
+            }
+        }
+    }
+
+    // 2. Fall back to Authorization: Bearer <token>
+    if let Some(auth_header) = parts
+        .headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        && let Some(token) = auth_header.strip_prefix("Bearer ")
+    {
+        return Some(token.trim().to_string());
+    }
+
+    None
+}
+
+/// Extractor that verifies the BetterAuth session from Cookies or Bearer headers against SQLx database.
+#[derive(Debug, Clone)]
+pub struct BetterAuthUser {
+    pub user: User,
+    pub session: Session,
+}
+
+impl FromRequestParts<Arc<AppState>> for BetterAuthUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let token = extract_token_from_parts(parts).ok_or_else(|| {
+            AppError::Unauthorized(
+                "Missing authentication. Provide 'better-auth.session_token' cookie or Bearer token."
+                    .to_string(),
+            )
+        })?;
+
+        let now = current_timestamp();
+
+        let session = sqlx::query_as::<_, Session>(
+            "SELECT id, user_id, token, expires_at, created_at FROM sessions WHERE token = ? AND expires_at > ?",
+        )
+        .bind(&token)
+        .bind(now)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Invalid or expired session".to_string()))?;
+
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+        )
+        .bind(session.user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User belonging to session no longer exists".to_string()))?;
+
+        Ok(BetterAuthUser { user, session })
+    }
+}
+
+/// Legacy / Static Bearer token extractor for administrative tooling.
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub user_id: i64,
@@ -194,51 +425,7 @@ where
     }
 }
 
-// --- 4. Structured Application Errors (HTTP Mapping) ---
-
-#[derive(Debug)]
-pub enum AppError {
-    BadRequest(String),
-    NotFound(String),
-    Conflict(String),
-    Unauthorized(String),
-    DatabaseError(sqlx::Error),
-}
-
-impl From<sqlx::Error> for AppError {
-    fn from(err: sqlx::Error) -> Self {
-        if let sqlx::Error::Database(ref db_err) = err
-            && db_err.message().contains("UNIQUE")
-        {
-            return AppError::Conflict("A user with this username already exists".to_string());
-        }
-        AppError::DatabaseError(err)
-    }
-}
-
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::DatabaseError(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Database failure: {e}"),
-            ),
-        };
-
-        let body = Json(ErrorResponse {
-            status: status.as_u16(),
-            error: error_message,
-        });
-
-        (status, body).into_response()
-    }
-}
-
-// --- 5. Database Setup & Foreign Key Migrations ---
+// --- 6. Database Setup & Migrations ---
 
 pub async fn setup_database(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::from_str(database_url)?
@@ -254,8 +441,19 @@ pub async fn setup_database(database_url: &str) -> Result<SqlitePool, sqlx::Erro
         r#"
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS tasks (
@@ -274,7 +472,234 @@ pub async fn setup_database(database_url: &str) -> Result<SqlitePool, sqlx::Erro
     Ok(pool)
 }
 
-// --- 6. Route Handlers with OpenAPI Annotations ---
+// --- 7. BetterAuth Endpoint Handlers ---
+
+/// Sign up a new user with email, password, and name (BetterAuth compatible)
+#[utoipa::path(
+    post,
+    path = "/api/auth/sign-up/email",
+    tag = "BetterAuth",
+    request_body = SignUpPayload,
+    responses(
+        (status = 201, description = "User registered and session created", body = AuthResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 409, description = "Email already registered", body = ErrorResponse),
+        (status = 500, description = "Database failure", body = ErrorResponse)
+    )
+)]
+pub async fn auth_sign_up(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<SignUpPayload>,
+) -> Result<(StatusCode, HeaderMap, Json<AuthResponse>), AppError> {
+    let name = payload.name.trim();
+    let email = payload.email.trim();
+    let password = payload.password.trim();
+
+    if name.is_empty() {
+        return Err(AppError::BadRequest("Name cannot be empty".to_string()));
+    }
+    if !email.contains('@') {
+        return Err(AppError::BadRequest("Invalid email address".to_string()));
+    }
+    if password.len() < 6 {
+        return Err(AppError::BadRequest(
+            "Password must be at least 6 characters".to_string(),
+        ));
+    }
+
+    let hashed_pw = hash_password(password);
+    let now = current_timestamp();
+
+    // Begin atomic transaction: user + initial session
+    let mut tx = state.pool.begin().await?;
+
+    let user_id = sqlx::query(
+        "INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(name)
+    .bind(email)
+    .bind(&hashed_pw)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid();
+
+    let token = generate_session_token();
+    let expires_at = now + (7 * 24 * 3600); // 7 days expiration
+
+    sqlx::query(
+        "INSERT INTO sessions (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(&token)
+    .bind(expires_at)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let user = User {
+        id: user_id,
+        name: name.to_string(),
+        email: email.to_string(),
+        created_at: now,
+    };
+
+    // Format BetterAuth HTTP-Only session cookie
+    let mut headers = HeaderMap::new();
+    let cookie_val = format!(
+        "better-auth.session_token={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        7 * 24 * 3600
+    );
+    headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie_val).unwrap());
+
+    Ok((
+        StatusCode::CREATED,
+        headers,
+        Json(AuthResponse { token, user }),
+    ))
+}
+
+#[derive(Debug, FromRow)]
+struct UserAuthRow {
+    id: i64,
+    name: String,
+    email: String,
+    password_hash: String,
+    created_at: i64,
+}
+
+/// Sign in an existing user with email and password (BetterAuth compatible)
+#[utoipa::path(
+    post,
+    path = "/api/auth/sign-in/email",
+    tag = "BetterAuth",
+    request_body = SignInPayload,
+    responses(
+        (status = 200, description = "Sign in successful, returns user and session token", body = AuthResponse),
+        (status = 401, description = "Invalid email or password", body = ErrorResponse),
+        (status = 500, description = "Database failure", body = ErrorResponse)
+    )
+)]
+pub async fn auth_sign_in(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<SignInPayload>,
+) -> Result<(StatusCode, HeaderMap, Json<AuthResponse>), AppError> {
+    let email = payload.email.trim();
+    let password = payload.password.trim();
+
+    let record = sqlx::query_as::<_, UserAuthRow>(
+        "SELECT id, name, email, password_hash, created_at FROM users WHERE email = ?",
+    )
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("Invalid email or password".to_string()))?;
+
+    if !verify_password(password, &record.password_hash) {
+        return Err(AppError::Unauthorized(
+            "Invalid email or password".to_string(),
+        ));
+    }
+
+    let token = generate_session_token();
+    let now = current_timestamp();
+    let expires_at = now + (7 * 24 * 3600);
+
+    sqlx::query(
+        "INSERT INTO sessions (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(record.id)
+    .bind(&token)
+    .bind(expires_at)
+    .bind(now)
+    .execute(&state.pool)
+    .await?;
+
+    let user = User {
+        id: record.id,
+        name: record.name,
+        email: record.email,
+        created_at: record.created_at,
+    };
+
+    let mut headers = HeaderMap::new();
+    let cookie_val = format!(
+        "better-auth.session_token={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        7 * 24 * 3600
+    );
+    headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie_val).unwrap());
+
+    Ok((StatusCode::OK, headers, Json(AuthResponse { token, user })))
+}
+
+/// Sign out and invalidate current session (BetterAuth compatible)
+#[utoipa::path(
+    post,
+    path = "/api/auth/sign-out",
+    tag = "BetterAuth",
+    responses(
+        (status = 200, description = "Session invalidated and cookie cleared"),
+        (status = 401, description = "No active session", body = ErrorResponse)
+    )
+)]
+pub async fn auth_sign_out(
+    State(state): State<Arc<AppState>>,
+    auth: BetterAuthUser,
+) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), AppError> {
+    sqlx::query("DELETE FROM sessions WHERE id = ?")
+        .bind(auth.session.id)
+        .execute(&state.pool)
+        .await?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        SET_COOKIE,
+        HeaderValue::from_static("better-auth.session_token=; Path=/; HttpOnly; Max-Age=0"),
+    );
+
+    Ok((
+        StatusCode::OK,
+        headers,
+        Json(serde_json::json!({ "success": true })),
+    ))
+}
+
+/// Retrieve the active session and user profile (BetterAuth compatible)
+#[utoipa::path(
+    get,
+    path = "/api/auth/get-session",
+    tag = "BetterAuth",
+    responses(
+        (status = 200, description = "Active session information", body = SessionResponse),
+        (status = 401, description = "Unauthorized or expired session", body = ErrorResponse)
+    )
+)]
+pub async fn auth_get_session(
+    auth: BetterAuthUser,
+) -> Result<Json<SessionResponse>, AppError> {
+    Ok(Json(SessionResponse {
+        session: auth.session,
+        user: auth.user,
+    }))
+}
+
+/// Retrieve current authenticated user profile using the BetterAuthUser extractor
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    tag = "BetterAuth",
+    responses(
+        (status = 200, description = "Current authenticated user profile", body = User),
+        (status = 401, description = "Unauthorized", body = ErrorResponse)
+    )
+)]
+pub async fn auth_me(auth: BetterAuthUser) -> Result<Json<User>, AppError> {
+    Ok(Json(auth.user))
+}
+
+// --- 8. Standard CRUD & Relational Route Handlers ---
 
 /// Service health check
 #[utoipa::path(
@@ -296,7 +721,7 @@ pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
     )
 }
 
-/// Create a new single user
+/// Create a single user
 #[utoipa::path(
     post,
     path = "/api/users",
@@ -305,7 +730,7 @@ pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
     responses(
         (status = 201, description = "User created successfully", body = User),
         (status = 400, description = "Validation error", body = ErrorResponse),
-        (status = 409, description = "Username conflict", body = ErrorResponse),
+        (status = 409, description = "Email conflict", body = ErrorResponse),
         (status = 500, description = "Internal database error", body = ErrorResponse)
     )
 )]
@@ -313,34 +738,41 @@ pub async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateUserPayload>,
 ) -> Result<(StatusCode, Json<User>), AppError> {
-    let username = payload.username.trim();
+    let name = payload.username.trim();
     let email = payload.email.trim();
 
-    if username.is_empty() {
+    if name.is_empty() {
         return Err(AppError::BadRequest("Username cannot be empty".to_string()));
     }
     if !email.contains('@') {
         return Err(AppError::BadRequest("Invalid email address".to_string()));
     }
 
-    let inserted_id = sqlx::query("INSERT INTO users (username, email) VALUES (?, ?)")
-        .bind(username)
-        .bind(email)
-        .execute(&state.pool)
-        .await?
-        .last_insert_rowid();
+    let default_hash = hash_password("default123");
+    let now = current_timestamp();
+
+    let inserted_id = sqlx::query(
+        "INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(name)
+    .bind(email)
+    .bind(default_hash)
+    .bind(now)
+    .execute(&state.pool)
+    .await?
+    .last_insert_rowid();
 
     let user = User {
         id: inserted_id,
-        username: username.to_string(),
+        name: name.to_string(),
         email: email.to_string(),
+        created_at: now,
     };
 
     Ok((StatusCode::CREATED, Json(user)))
 }
 
 /// Create a user along with multiple initial tasks atomically in a single SQL transaction.
-/// If any task insertion fails or is invalid, the entire transaction rolls back!
 #[utoipa::path(
     post,
     path = "/api/users/atomic",
@@ -349,7 +781,7 @@ pub async fn create_user(
     responses(
         (status = 201, description = "User and tasks created atomically", body = UserWithTasks),
         (status = 400, description = "Validation failure (triggers automatic rollback)", body = ErrorResponse),
-        (status = 409, description = "Username conflict", body = ErrorResponse),
+        (status = 409, description = "Email conflict", body = ErrorResponse),
         (status = 500, description = "Database error", body = ErrorResponse)
     )
 )]
@@ -357,26 +789,33 @@ pub async fn create_user_with_tasks_atomic(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateUserWithTasksPayload>,
 ) -> Result<(StatusCode, Json<UserWithTasks>), AppError> {
-    let username = payload.username.trim();
+    let name = payload.username.trim();
     let email = payload.email.trim();
 
-    if username.is_empty() {
+    if name.is_empty() {
         return Err(AppError::BadRequest("Username cannot be empty".to_string()));
     }
     if !email.contains('@') {
         return Err(AppError::BadRequest("Invalid email address".to_string()));
     }
 
+    let default_hash = hash_password("default123");
+    let now = current_timestamp();
+
     // Begin an atomic transaction:
     let mut tx = state.pool.begin().await?;
 
     // Step 1: Insert user inside the transaction
-    let user_id = sqlx::query("INSERT INTO users (username, email) VALUES (?, ?)")
-        .bind(username)
-        .bind(email)
-        .execute(&mut *tx)
-        .await?
-        .last_insert_rowid();
+    let user_id = sqlx::query(
+        "INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(name)
+    .bind(email)
+    .bind(default_hash)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid();
 
     let mut tasks = Vec::new();
 
@@ -413,8 +852,9 @@ pub async fn create_user_with_tasks_atomic(
 
     let user = User {
         id: user_id,
-        username: username.to_string(),
+        name: name.to_string(),
         email: email.to_string(),
+        created_at: now,
     };
 
     Ok((StatusCode::CREATED, Json(UserWithTasks { user, tasks })))
@@ -442,7 +882,7 @@ pub async fn list_users(
     let offset = pagination.offset.unwrap_or(0).max(0);
 
     let users = sqlx::query_as::<_, User>(
-        "SELECT id, username, email FROM users ORDER BY id ASC LIMIT ? OFFSET ?",
+        "SELECT id, name, email, created_at FROM users ORDER BY id ASC LIMIT ? OFFSET ?",
     )
     .bind(limit)
     .bind(offset)
@@ -469,11 +909,13 @@ pub async fn get_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Json<User>, AppError> {
-    let user = sqlx::query_as::<_, User>("SELECT id, username, email FROM users WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("User with id {id} not found")))?;
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, name, email, created_at FROM users WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("User with id {id} not found")))?;
 
     Ok(Json(user))
 }
@@ -534,7 +976,6 @@ pub async fn create_task(
         return Err(AppError::BadRequest("Task title cannot be empty".to_string()));
     }
 
-    // Verify user exists first to provide a clean 404
     let user_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.pool)
@@ -584,7 +1025,6 @@ pub async fn list_user_tasks(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<i64>,
 ) -> Result<Json<Vec<Task>>, AppError> {
-    // Verify user exists
     let user_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.pool)
@@ -634,12 +1074,17 @@ pub async fn protected_admin_stats(
     }))
 }
 
-// --- 7. OpenAPI Documentation Specification ---
+// --- 9. OpenAPI Documentation Specification ---
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
         health_check,
+        auth_sign_up,
+        auth_sign_in,
+        auth_sign_out,
+        auth_get_session,
+        auth_me,
         create_user,
         create_user_with_tasks_atomic,
         list_users,
@@ -652,10 +1097,15 @@ pub async fn protected_admin_stats(
     components(
         schemas(
             User,
+            Session,
+            Task,
+            SignUpPayload,
+            SignInPayload,
+            AuthResponse,
+            SessionResponse,
             CreateUserPayload,
             CreateUserWithTasksPayload,
             UserWithTasks,
-            Task,
             CreateTaskPayload,
             HealthResponse,
             ErrorResponse,
@@ -663,36 +1113,43 @@ pub async fn protected_admin_stats(
         )
     ),
     tags(
+        (name = "BetterAuth", description = "TypeScript BetterAuth compatible authentication endpoints"),
         (name = "System", description = "System and health check endpoints"),
         (name = "Users", description = "User management and CRUD endpoints"),
         (name = "Tasks", description = "Task management and foreign key relationships"),
         (name = "Transactions", description = "Atomic multi-table SQL transaction operations"),
-        (name = "Auth", description = "Protected endpoints requiring HTTP Bearer authentication")
+        (name = "Auth", description = "Administrative endpoints requiring HTTP Bearer authentication")
     ),
     info(
         title = "Rust Tutorial Backend API",
         version = "1.0.0",
-        description = "Production-grade asynchronous REST API built with Axum, SQLx SQLite, atomic transactions, bearer auth, and Utoipa OpenAPI documentation."
+        description = "Production-grade asynchronous REST API built with Axum, SQLx SQLite, BetterAuth compatibility, atomic transactions, and Utoipa OpenAPI documentation."
     )
 )]
 pub struct ApiDoc;
 
-// --- 8. Application Router Builder ---
+// --- 10. Application Router Builder ---
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health_check))
+        // BetterAuth compatible endpoints
+        .route("/api/auth/sign-up/email", post(auth_sign_up))
+        .route("/api/auth/sign-in/email", post(auth_sign_in))
+        .route("/api/auth/sign-out", post(auth_sign_out))
+        .route("/api/auth/get-session", get(auth_get_session))
+        .route("/api/auth/session", get(auth_get_session)) // Alias
+        .route("/api/auth/me", get(auth_me))
+        // Standard user & transactional endpoints
         .route("/api/users", post(create_user).get(list_users))
         .route("/api/users/atomic", post(create_user_with_tasks_atomic))
-        .route(
-            "/api/users/{id}",
-            get(get_user).delete(delete_user),
-        )
+        .route("/api/users/{id}", get(get_user).delete(delete_user))
         .route(
             "/api/users/{id}/tasks",
             post(create_task).get(list_user_tasks),
         )
+        // Admin endpoints
         .route("/api/admin/stats", get(protected_admin_stats))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -711,7 +1168,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Interactive Documentation:");
     println!("  Swagger UI:   http://{addr}/swagger-ui");
     println!("  OpenAPI JSON: http://{addr}/api-docs/openapi.json");
-    println!("\nPublic Endpoints:");
+    println!("\nBetterAuth Endpoints:");
+    println!("  POST   http://{addr}/api/auth/sign-up/email");
+    println!("  POST   http://{addr}/api/auth/sign-in/email");
+    println!("  POST   http://{addr}/api/auth/sign-out");
+    println!("  GET    http://{addr}/api/auth/get-session");
+    println!("  GET    http://{addr}/api/auth/me");
+    println!("\nCRUD & Relational Endpoints:");
     println!("  GET    http://{addr}/health");
     println!("  POST   http://{addr}/api/users");
     println!("  POST   http://{addr}/api/users/atomic (Transaction: user + tasks)");
@@ -720,8 +1183,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  DELETE http://{addr}/api/users/:id");
     println!("  POST   http://{addr}/api/users/:id/tasks");
     println!("  GET    http://{addr}/api/users/:id/tasks");
-    println!("\nProtected Endpoints (Requires 'Authorization: Bearer secret-token-123'):");
-    println!("  GET    http://{addr}/api/admin/stats");
 
     axum::serve(listener, app).await?;
     Ok(())
@@ -739,6 +1200,151 @@ mod tests {
             .expect("Failed to initialize test SQLite memory db");
         let state = Arc::new(AppState { pool });
         create_router(state)
+    }
+
+    #[tokio::test]
+    async fn test_betterauth_sign_up_and_cookie() {
+        let app = test_app().await;
+
+        let payload = SignUpPayload {
+            name: "BetterAuth Tester".to_string(),
+            email: "tester@betterauth.dev".to_string(),
+            password: "secure_password_123".to_string(),
+        };
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sign-up/email")
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_string(&payload).unwrap(),
+            ))
+            .unwrap();
+
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // Verify Set-Cookie header is properly formatted
+        let cookie_header = res
+            .headers()
+            .get(SET_COOKIE)
+            .expect("Expected Set-Cookie header")
+            .to_str()
+            .unwrap();
+        assert!(cookie_header.contains("better-auth.session_token="));
+        assert!(cookie_header.contains("HttpOnly"));
+        assert!(cookie_header.contains("Path=/"));
+
+        let body_bytes = axum::body::to_bytes(res.into_body(), 1024 * 16)
+            .await
+            .unwrap();
+        let auth_res: AuthResponse = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(auth_res.user.email, "tester@betterauth.dev");
+        assert!(!auth_res.token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_betterauth_full_auth_lifecycle() {
+        let app = test_app().await;
+
+        // 1. Sign Up
+        let signup_req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sign-up/email")
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_string(&SignUpPayload {
+                    name: "Sam Lifecycle".to_string(),
+                    email: "sam@example.com".to_string(),
+                    password: "password123".to_string(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let signup_res = app.clone().oneshot(signup_req).await.unwrap();
+        assert_eq!(signup_res.status(), StatusCode::CREATED);
+
+        // 2. Sign In with wrong password -> 401
+        let bad_signin_req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sign-in/email")
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_string(&SignInPayload {
+                    email: "sam@example.com".to_string(),
+                    password: "wrong_password".to_string(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let bad_signin_res = app.clone().oneshot(bad_signin_req).await.unwrap();
+        assert_eq!(bad_signin_res.status(), StatusCode::UNAUTHORIZED);
+
+        // 3. Sign In with correct password -> 200 OK + Cookie
+        let good_signin_req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sign-in/email")
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_string(&SignInPayload {
+                    email: "sam@example.com".to_string(),
+                    password: "password123".to_string(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let good_signin_res = app.clone().oneshot(good_signin_req).await.unwrap();
+        assert_eq!(good_signin_res.status(), StatusCode::OK);
+
+        let signin_bytes = axum::body::to_bytes(good_signin_res.into_body(), 1024 * 16)
+            .await
+            .unwrap();
+        let signin_body: AuthResponse = serde_json::from_slice(&signin_bytes).unwrap();
+        let token = signin_body.token;
+
+        // 4. Get Session using Cookie
+        let get_session_req = Request::builder()
+            .uri("/api/auth/get-session")
+            .header("Cookie", format!("better-auth.session_token={token}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let get_session_res = app.clone().oneshot(get_session_req).await.unwrap();
+        assert_eq!(get_session_res.status(), StatusCode::OK);
+
+        let session_bytes = axum::body::to_bytes(get_session_res.into_body(), 1024 * 16)
+            .await
+            .unwrap();
+        let session_res: SessionResponse = serde_json::from_slice(&session_bytes).unwrap();
+        assert_eq!(session_res.user.email, "sam@example.com");
+        assert_eq!(session_res.session.token, token);
+
+        // 5. Access /api/auth/me using Bearer header
+        let me_req = Request::builder()
+            .uri("/api/auth/me")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let me_res = app.clone().oneshot(me_req).await.unwrap();
+        assert_eq!(me_res.status(), StatusCode::OK);
+
+        // 6. Sign Out
+        let signout_req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sign-out")
+            .header("Cookie", format!("better-auth.session_token={token}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let signout_res = app.clone().oneshot(signout_req).await.unwrap();
+        assert_eq!(signout_res.status(), StatusCode::OK);
+
+        // 7. Verify session is now invalidated (401)
+        let get_after_signout = Request::builder()
+            .uri("/api/auth/get-session")
+            .header("Cookie", format!("better-auth.session_token={token}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let after_signout_res = app.oneshot(get_after_signout).await.unwrap();
+        assert_eq!(after_signout_res.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -800,15 +1406,15 @@ mod tests {
         let create_res = app.clone().oneshot(create_req).await.unwrap();
         assert_eq!(create_res.status(), StatusCode::CREATED);
 
-        // 2. Duplicate Username Conflict (409)
+        // 2. Duplicate Email Conflict (409)
         let dup_req = Request::builder()
             .method("POST")
             .uri("/api/users")
             .header("Content-Type", "application/json")
             .body(axum::body::Body::from(
                 serde_json::to_string(&CreateUserPayload {
-                    username: "alice".to_string(),
-                    email: "alice2@example.com".to_string(),
+                    username: "alice2".to_string(),
+                    email: "alice@example.com".to_string(),
                 })
                 .unwrap(),
             ))
@@ -875,7 +1481,7 @@ mod tests {
             .await
             .unwrap();
         let user_with_tasks: UserWithTasks = serde_json::from_slice(&body_bytes).unwrap();
-        assert_eq!(user_with_tasks.user.username, "charlie");
+        assert_eq!(user_with_tasks.user.name, "charlie");
         assert_eq!(user_with_tasks.tasks.len(), 2);
     }
 
@@ -883,7 +1489,6 @@ mod tests {
     async fn test_atomic_transaction_rollback_on_invalid_task() {
         let app = test_app().await;
 
-        // One task title is empty, which must trigger Bad Request and roll back user insertion
         let payload = CreateUserWithTasksPayload {
             username: "dave_rollback".to_string(),
             email: "dave@example.com".to_string(),
@@ -917,7 +1522,7 @@ mod tests {
             .unwrap();
         let users: Vec<User> = serde_json::from_slice(&body_bytes).unwrap();
         assert!(
-            users.iter().all(|u| u.username != "dave_rollback"),
+            users.iter().all(|u| u.name != "dave_rollback"),
             "User should have been rolled back!"
         );
     }
