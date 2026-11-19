@@ -52,7 +52,7 @@ organized as a Cargo workspace.
 | Concurrency, Threads & Mutexes | `concurrency_threads` | Done, 2 tests | `cargo run -p concurrency_threads` |
 | Multithreaded Web Server (21) | `multithreaded_webserver` | Done, 9 tests | `cargo run -p multithreaded_webserver` |
 | Async Programming & Tokio (17) | `async_tokio` | Done, 5 tests | `cargo run -p async_tokio` |
-| Production REST API (Axum + SQLite) | `backend_api_service` | Done, 2 tests | `cargo run -p backend_api_service` |
+| Production REST API & Swagger UI (Axum + SQLite) | `backend_api_service` | Done, 3 tests | `cargo run -p backend_api_service` |
 
 `modules` is the chapter 7 reference: `lib.rs` + `main.rs`, `mod`/`pub`/`use`, a private module, a
 re-export, and a real `tests/` directory. `multithreaded_webserver` is the chapter 21 reference: TCP

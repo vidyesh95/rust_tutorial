@@ -1,4 +1,4 @@
-//! # Phase 4: Production-Grade REST API with Axum, Serde & SQLx SQLite
+//! # Phase 4: Production-Grade REST API with Axum, Serde, SQLx & OpenAPI / Swagger
 //!
 //! ## Key Backend Architecture:
 //! - **Axum Web Framework**: Type-safe routing, extractors (`Path`, `Query`, `Json`, `State`),
@@ -6,6 +6,8 @@
 //! - **Serde Serialization**: Compile-time derived `Serialize` and `Deserialize` for JSON bodies.
 //! - **SQLx SQLite**: Non-blocking asynchronous SQL execution, connection pooling (`SqlitePool`),
 //!   and automatic schema initialization.
+//! - **OpenAPI & Swagger UI (utoipa)**: Interactive documentation served directly at `/swagger-ui`
+//!   and machine-readable specification served at `/api-docs/openapi.json`.
 //! - **Structured Domain Errors**: `AppError` implements `IntoResponse`, mapping internal/validation
 //!   errors directly to HTTP status codes (400, 404, 409, 500) and consistent JSON responses.
 
@@ -20,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool, sqlite::SqlitePoolOptions};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 // --- 1. Shared Application State ---
 
@@ -30,28 +34,57 @@ pub struct AppState {
 
 // --- 2. Domain Models & DTOs ---
 
-#[derive(Debug, Serialize, Deserialize, FromRow, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone, PartialEq, Eq, ToSchema)]
 pub struct User {
+    /// Unique database identifier
+    #[schema(example = 1)]
     pub id: i64,
+    /// Unique username of the user
+    #[schema(example = "alice")]
     pub username: String,
+    /// Primary email address
+    #[schema(example = "alice@example.com")]
     pub email: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateUserPayload {
+    /// Desired username (must be unique)
+    #[schema(example = "bob")]
     pub username: String,
+    /// User's contact email
+    #[schema(example = "bob@example.com")]
     pub email: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PaginationQuery {
+    /// Maximum number of records to return (1-100)
+    #[schema(example = 20)]
     pub limit: Option<i64>,
+    /// Number of records to skip
+    #[schema(example = 0)]
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct GenericMessageResponse {
-    pub message: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    /// HTTP status code
+    #[schema(example = 404)]
+    pub status: u16,
+    /// Detailed error message
+    #[schema(example = "User with id 1 not found")]
+    pub error: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HealthResponse {
+    #[schema(example = "healthy")]
+    pub status: String,
+    #[schema(example = "Axum 0.8")]
+    pub framework: String,
+    #[schema(example = "SQLite / SQLx")]
+    pub database: String,
 }
 
 // --- 3. Structured Application Errors (HTTP Mapping) ---
@@ -66,7 +99,6 @@ pub enum AppError {
 
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        // SQLite constraint error code for UNIQUE violation is 2067 or 1555
         if let sqlx::Error::Database(ref db_err) = err
             && db_err.message().contains("UNIQUE")
         {
@@ -88,10 +120,10 @@ impl IntoResponse for AppError {
             ),
         };
 
-        let body = Json(serde_json::json!({
-            "status": status.as_u16(),
-            "error": error_message,
-        }));
+        let body = Json(ErrorResponse {
+            status: status.as_u16(),
+            error: error_message,
+        });
 
         (status, body).into_response()
     }
@@ -105,7 +137,6 @@ pub async fn setup_database(database_url: &str) -> Result<SqlitePool, sqlx::Erro
         .connect(database_url)
         .await?;
 
-    // Create table if it does not exist
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS users (
@@ -121,19 +152,41 @@ pub async fn setup_database(database_url: &str) -> Result<SqlitePool, sqlx::Erro
     Ok(pool)
 }
 
-// --- 5. Route Handlers ---
+// --- 5. Route Handlers with OpenAPI Annotations ---
 
-pub async fn health_check() -> (StatusCode, Json<serde_json::Value>) {
+/// Service health check
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "System",
+    responses(
+        (status = 200, description = "Service is operational", body = HealthResponse)
+    )
+)]
+pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
     (
         StatusCode::OK,
-        Json(serde_json::json!({
-            "status": "healthy",
-            "framework": "Axum 0.8",
-            "database": "SQLite / SQLx"
-        })),
+        Json(HealthResponse {
+            status: "healthy".to_string(),
+            framework: "Axum 0.8".to_string(),
+            database: "SQLite / SQLx".to_string(),
+        }),
     )
 }
 
+/// Create a new user
+#[utoipa::path(
+    post,
+    path = "/api/users",
+    tag = "Users",
+    request_body = CreateUserPayload,
+    responses(
+        (status = 201, description = "User created successfully", body = User),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 409, description = "Username conflict", body = ErrorResponse),
+        (status = 500, description = "Internal database error", body = ErrorResponse)
+    )
+)]
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateUserPayload>,
@@ -164,6 +217,20 @@ pub async fn create_user(
     Ok((StatusCode::CREATED, Json(user)))
 }
 
+/// List users with optional limit and offset pagination
+#[utoipa::path(
+    get,
+    path = "/api/users",
+    tag = "Users",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max number of items to return"),
+        ("offset" = Option<i64>, Query, description = "Number of items to skip")
+    ),
+    responses(
+        (status = 200, description = "List of users", body = [User]),
+        (status = 500, description = "Database error", body = ErrorResponse)
+    )
+)]
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
     Query(pagination): Query<PaginationQuery>,
@@ -182,6 +249,19 @@ pub async fn list_users(
     Ok(Json(users))
 }
 
+/// Retrieve a user by their unique database ID
+#[utoipa::path(
+    get,
+    path = "/api/users/{id}",
+    tag = "Users",
+    params(
+        ("id" = i64, Path, description = "User unique ID")
+    ),
+    responses(
+        (status = 200, description = "User found", body = User),
+        (status = 404, description = "User not found", body = ErrorResponse)
+    )
+)]
 pub async fn get_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
@@ -195,6 +275,19 @@ pub async fn get_user(
     Ok(Json(user))
 }
 
+/// Delete a user by their unique database ID
+#[utoipa::path(
+    delete,
+    path = "/api/users/{id}",
+    tag = "Users",
+    params(
+        ("id" = i64, Path, description = "User unique ID")
+    ),
+    responses(
+        (status = 204, description = "User deleted successfully"),
+        (status = 404, description = "User not found", body = ErrorResponse)
+    )
+)]
 pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
@@ -212,10 +305,37 @@ pub async fn delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// --- 6. Application Router Builder ---
+// --- 6. OpenAPI Documentation Specification ---
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        health_check,
+        create_user,
+        list_users,
+        get_user,
+        delete_user,
+    ),
+    components(
+        schemas(User, CreateUserPayload, HealthResponse, ErrorResponse)
+    ),
+    tags(
+        (name = "System", description = "System and health check endpoints"),
+        (name = "Users", description = "User management and CRUD endpoints")
+    ),
+    info(
+        title = "Rust Tutorial Backend API",
+        version = "1.0.0",
+        description = "Production-grade asynchronous REST API built with Axum, SQLx SQLite, and Utoipa OpenAPI documentation."
+    )
+)]
+pub struct ApiDoc;
+
+// --- 7. Application Router Builder ---
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health_check))
         .route("/api/users", post(create_user).get(list_users))
         .route("/api/users/{id}", get(get_user).delete(delete_user))
@@ -233,7 +353,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "127.0.0.1:3000";
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("=== Phase 4 Production REST API running on http://{addr} ===");
-    println!("Endpoints:");
+    println!("Interactive Documentation:");
+    println!("  Swagger UI:   http://{addr}/swagger-ui");
+    println!("  OpenAPI JSON: http://{addr}/api-docs/openapi.json");
+    println!("\nEndpoints:");
     println!("  GET    http://{addr}/health");
     println!("  POST   http://{addr}/api/users");
     println!("  GET    http://{addr}/api/users?limit=10&offset=0");
@@ -248,7 +371,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use axum::http::Request;
-    use tower::ServiceExt; // for oneshot()
+    use tower::ServiceExt;
 
     async fn test_app() -> Router {
         let pool = setup_database("sqlite::memory:")
@@ -256,6 +379,29 @@ mod tests {
             .expect("Failed to initialize test SQLite memory db");
         let state = Arc::new(AppState { pool });
         create_router(state)
+    }
+
+    #[tokio::test]
+    async fn test_openapi_and_swagger_endpoints() {
+        let app = test_app().await;
+
+        // Verify OpenAPI JSON spec is generated and valid
+        let req = Request::builder()
+            .uri("/api-docs/openapi.json")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Verify Swagger UI HTML page loads
+        let swagger_req = Request::builder()
+            .uri("/swagger-ui/")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let swagger_res = app.oneshot(swagger_req).await.unwrap();
+        assert_eq!(swagger_res.status(), StatusCode::OK);
     }
 
     #[tokio::test]
