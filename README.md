@@ -6,12 +6,13 @@ Tutorial repository following [The Rust Programming Language Book](https://doc.r
 Current toolchain: **rustc / cargo 1.100.0** (pinned in `rust-toolchain.toml`), `edition = "2024"`,
 organized as a Cargo workspace.
 
-> **Status: all 4 roadmap phases complete.** 16 of 21 book chapters are done; 70 tests pass across all crates (unit, integration, and doc tests) and Clippy is clean. The modern async backend stack (Tokio, Axum, Serde, SQLx SQLite) is fully implemented. See [ROADMAP.md](ROADMAP.md) for the complete curriculum.
+> **Status: all 4 roadmap phases complete.** 16 of 21 book chapters are done; 74 tests pass across all crates (unit, integration, and doc tests) and Clippy is clean. The modern async backend stack (Tokio, Axum 0.8, Serde, SQLx SQLite with atomic transactions, foreign keys, and Bearer auth) is fully implemented. Check out the comprehensive [INTERVIEW_PREP.md](INTERVIEW_PREP.md) for 50 in-depth interview questions, backend request lifecycle architecture, and live-coding patterns. See [ROADMAP.md](ROADMAP.md) for the complete curriculum.
 
 ---
 
 ## Contents
 
+- [Interview & Backend Masterclass (INTERVIEW_PREP.md)](INTERVIEW_PREP.md)
 - [What's in the repo](#whats-in-the-repo)
 - [Book coverage map](#book-coverage-map)
 - [What's still missing](#whats-still-missing)
@@ -52,7 +53,7 @@ organized as a Cargo workspace.
 | Concurrency, Threads & Mutexes | `concurrency_threads` | Done, 2 tests | `cargo run -p concurrency_threads` |
 | Multithreaded Web Server (21) | `multithreaded_webserver` | Done, 9 tests | `cargo run -p multithreaded_webserver` |
 | Async Programming & Tokio (17) | `async_tokio` | Done, 5 tests | `cargo run -p async_tokio` |
-| Production REST API & Swagger UI (Axum + SQLite) | `backend_api_service` | Done, 3 tests | `cargo run -p backend_api_service` |
+| Production REST API & Swagger UI (Axum + SQLite + Auth + Tx) | `backend_api_service` | Done, 7 tests | `cargo run -p backend_api_service` |
 
 `modules` is the chapter 7 reference: `lib.rs` + `main.rs`, `mod`/`pub`/`use`, a private module, a
 re-export, and a real `tests/` directory. `multithreaded_webserver` is the chapter 21 reference: TCP

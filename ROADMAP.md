@@ -2,9 +2,7 @@
 
 Welcome to the comprehensive learning path for Rust backend development. This curriculum bridges the gap between the foundational theory taught in [The Rust Programming Language Book](https://doc.rust-lang.org/book/) and modern, production-grade backend engineering with Rust.
 
-> **Status (2026-11-19):** Phase 1 and Phase 2 are complete — 11 book chapters fully covered, 39
-> unit tests passing, Clippy clean. Open items from those phases: lifetime annotations (10.3) and
-> `tests/` integration tests (11). Phase 3 (raw TCP/HTTP server) is next, then Phase 4.
+> **Status (2026-11-19):** All 4 phases are complete — 16 book chapters covered, 74 tests passing across the workspace, Clippy clean. Includes Tokio async, Axum 0.8, SQLx SQLite with atomic multi-table transactions, foreign key cascades, Bearer authentication, and OpenAPI/Swagger documentation. For technical interview prep and the full backend request lifecycle architecture, see [INTERVIEW_PREP.md](INTERVIEW_PREP.md).
 
 ---
 
