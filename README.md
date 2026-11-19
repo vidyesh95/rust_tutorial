@@ -6,8 +6,6 @@ Tutorial repository following [The Rust Programming Language Book](https://doc.r
 Current toolchain: **rustc / cargo 1.100.0** (pinned in `rust-toolchain.toml`), `edition = "2024"`,
 organized as a Cargo workspace.
 
-> **Status: all 4 roadmap phases complete.** 16 of 21 book chapters are done; 74 tests pass across all crates (unit, integration, and doc tests) and Clippy is clean. The modern async backend stack (Tokio, Axum 0.8, Serde, SQLx SQLite with atomic transactions, foreign keys, and Bearer auth) is fully implemented. Check out the comprehensive [INTERVIEW_PREP.md](INTERVIEW_PREP.md) for 50 in-depth interview questions, backend request lifecycle architecture, and live-coding patterns. See [ROADMAP.md](ROADMAP.md) for the complete curriculum.
-
 ---
 
 ## Contents
