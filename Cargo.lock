@@ -20,6 +20,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "collections"
+version = "0.1.0"
+
+[[package]]
+name = "concurrency_threads"
+version = "0.1.0"
+
+[[package]]
 name = "conditions"
 version = "0.1.0"
 
@@ -34,6 +42,14 @@ dependencies = [
 
 [[package]]
 name = "datatypes"
+version = "0.1.0"
+
+[[package]]
+name = "enums_matching"
+version = "0.1.0"
+
+[[package]]
+name = "error_handling"
 version = "0.1.0"
 
 [[package]]
@@ -64,6 +80,10 @@ name = "hello_cargo"
 version = "0.1.0"
 
 [[package]]
+name = "iterators_closures"
+version = "0.1.0"
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,6 +99,10 @@ version = "0.1.0"
 
 [[package]]
 name = "ownership"
+version = "0.1.0"
+
+[[package]]
+name = "ownership_borrowing"
 version = "0.1.0"
 
 [[package]]
@@ -106,6 +130,18 @@ checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "rust_tutorial"
+version = "0.1.0"
+
+[[package]]
+name = "smart_pointers"
+version = "0.1.0"
+
+[[package]]
+name = "structs_methods"
+version = "0.1.0"
+
+[[package]]
+name = "traits_generics"
 version = "0.1.0"
 
 [[package]]

@@ -1,0 +1,7 @@
+[package]
+name = "ownership_borrowing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]

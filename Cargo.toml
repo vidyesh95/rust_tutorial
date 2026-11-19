@@ -2,14 +2,23 @@
 resolver = "2"
 members = [
     ".",
+    "collections",
+    "concurrency_threads",
     "conditions",
     "datatypes",
+    "enums_matching",
+    "error_handling",
     "functions",
     "guessing_game",
     "hello_cargo",
+    "iterators_closures",
     "loops",
     "operators",
     "ownership",
+    "ownership_borrowing",
+    "smart_pointers",
+    "structs_methods",
+    "traits_generics",
     "variables",
 ]
 
